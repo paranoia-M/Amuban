@@ -1,99 +1,124 @@
 import sys
 import os
 import traceback
+import random
 from datetime import datetime
-from PyQt6.QtWidgets import QApplication, QDialog
+
+# 导入 PyQt6 核心组件
+from PyQt6.QtWidgets import QApplication, QDialog, QMessageBox
 from PyQt6.QtCore import Qt
 
 # =============================================================================
-# 1. 运行环境拓扑校准
+# 1. 资源路径校准引擎 (支持本地运行与 PyInstaller 打包)
 # =============================================================================
-# 强制将当前脚本所在目录添加到系统搜索路径，确保多层级 import 不会报错
-CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(CURRENT_DIR)
+def resource_path(relative_path):
+    """ 
+    获取资源绝对路径。针对 PyInstaller 的单文件打包模式 (_MEIPASS) 进行自适应。
+    """
+    if hasattr(sys, '_MEIPASS'):
+        # 打包后的临时解压路径
+        return os.path.join(sys._MEIPASS, relative_path)
+    # 本地开发环境路径
+    return os.path.join(os.path.abspath("."), relative_path)
+
+# 将校准后的目录添加至搜索路径，确保动态加载 14 个菜单模块时不报错
+sys.path.append(resource_path("ui"))
+sys.path.append(resource_path("core"))
 
 try:
-    # 导入自定义安全网关模块
+    # 导入自定义模块
     from ui.login_window import LoginWindow
-    # 导入 14 菜单主控逻辑平台模块
     from ui.main_window import IndustrialUI
 except ImportError as e:
-    print(f"致命错误：核心 UI 模块导入失败。请检查目录结构是否完整。\n详情: {e}")
-    traceback.print_exc()
+    print(f"模块载入失败：请确认 ui/ 目录下包含 __init__.py 以及对应的逻辑文件。")
+    print(f"详情: {e}")
     sys.exit(1)
 
 # =============================================================================
-# 2. 系统核心入口函数
+# 2. 系统启动调度中枢
 # =============================================================================
 
-def bootstrap():
+class IGBTAppController:
     """
-    IGBT 智能自动化测试系统启动引导程序
-    执行顺序：初始化App -> 安全认证网关 -> 硬件自检流水线 -> 载入主控逻辑层
+    系统引导控制器
+    管理从 venv 环境检查、身份认证到总控平台载入的全生命周期
     """
-    # 初始化全局 Application 对象
-    # 参数 sys.argv 允许程序接收外部命令行指令
-    app = QApplication(sys.argv)
-    
-    # 强制注入工业 Fusion 样式，解决暗黑模式下原生控件对比度不足的问题
-    app.setStyle('Fusion')
-    
-    # 全局字体微调，提升专利算法数据的阅读性
-    font = app.font()
-    font.setFamily("Segoe UI")
-    app.setFont(font)
+    def __init__(self):
+        self.app = QApplication(sys.argv)
+        self._apply_global_config()
 
-    try:
-        print(">>> 正在启动安全身份认证中心...")
+    def _apply_global_config(self):
+        """ 应用全局工业级视觉配置 """
+        # 设置 Fusion 样式，确保跨平台暗色主题表现一致
+        self.app.setStyle('Fusion')
         
-        # ---------------------------------------------------------
-        # 第一阶段：身份认证与系统预检
-        # ---------------------------------------------------------
-        login_gateway = LoginWindow()
-        
-        # 使用 exec() 以模态方式启动登录窗体，阻塞主线程直到用户响应
-        # 内部触发 _start_system_check 执行驱动链路与专利指纹校验
-        if login_gateway.exec() == QDialog.DialogCode.Accepted:
-            
-            # 获取登录后的用户信息（可用于报告生成人的自动填充）
-            user_identity = login_gateway.user_input.text()
-            print(f">>> 认证通过。操作员: {user_identity}。正在解构并挂载 14 核心专利页面...")
+        # 统一字体渲染 (解决部分系统文字发虚)
+        font = self.app.font()
+        font.setFamily("Segoe UI")
+        font.setPointSize(10)
+        self.app.setFont(font)
+
+    def run(self):
+        """ 执行启动流水线 """
+        try:
+            print(f">>> [{datetime.now().strftime('%H:%M:%S')}] 正在初始化安全网关...")
 
             # ---------------------------------------------------------
-            # 第二阶段：主逻辑平台载入
+            # 第一阶段：身份认证网关 (Login & Registration)
             # ---------------------------------------------------------
-            # 在登录窗体销毁后，立即实例化庞大的主控制窗口
-            # 此时会触发 main_window.py 中的 safe_import() 和 14 个页面的实例化
-            main_controller = IndustrialUI()
+            login_gate = LoginWindow()
             
-            # 显示主窗口
-            main_controller.show()
-            
-            print(">>> IGBT 智能自动化测试系统已就绪，进入实时事务监听状态。")
-            
-            # 进入 Qt 事件循环，维持程序运行
-            sys.exit(app.exec())
-            
-        else:
-            # 用户点击取消或关闭登录框
-            print(">>> 认证已取消或硬件自检未通过，系统安全退出。")
-            sys.exit(0)
+            # 以阻塞模式运行登录对话框
+            if login_gate.exec() == QDialog.DialogCode.Accepted:
+                
+                # 从登录窗口获取已验证的操作员 ID
+                operator_id = "未知用户"
+                if hasattr(login_gate, 'user_input'):
+                    operator_id = login_gate.user_input.text()
+                
+                print(f">>> 身份验证通过。操作员: {operator_id}。正在构建专利算法拓扑图...")
 
-    except Exception as fatal_error:
-        # 最后的防线：捕获所有未被处理的运行时异常并打印堆栈轨迹
-        print("-" * 60)
-        print(f"CRITICAL ERROR: 系统在初始化期间发生不可恢复的故障")
-        print(f"异常定位: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        print("-" * 60)
-        traceback.print_exc()
-        sys.exit(1)
+                # ---------------------------------------------------------
+                # 第二阶段：载入 14 菜单主控逻辑平台
+                # ---------------------------------------------------------
+                # 此处会触发 main_window.py 中的 safe_import 和页面实例化
+                self.main_window = IndustrialUI()
+                self.main_window.show()
+                
+                print(">>> 系统运行中。监控状态：ACTIVE")
+                
+                # 启动事件循环
+                return self.app.exec()
+            
+            else:
+                print(">>> 认证流程被用户中断，程序安全退出。")
+                return 0
+
+        except Exception:
+            # 捕获所有运行时导致的“闪退”异常并打印位置
+            print("\n" + "="*60)
+            print("CRITICAL ERROR: 系统核心逻辑发生致命崩溃")
+            print(f"发生时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            print("="*60)
+            traceback.print_exc()
+            
+            # 弹出图形化报错提示
+            error_dialog = QMessageBox()
+            error_dialog.setIcon(QMessageBox.Icon.Critical)
+            error_dialog.setWindowTitle("系统运行异常")
+            error_dialog.setText("检测到核心算法模块冲突或路径丢失。")
+            error_dialog.setInformativeText(traceback.format_exc())
+            error_dialog.exec()
+            return 1
 
 # =============================================================================
-# 3. 启动执行
+# 3. 运行环境入口
 # =============================================================================
 if __name__ == "__main__":
-    # 检查是否在 venv 环境中运行（可选）
+    # 模拟 venv 激活状态检查
     if not hasattr(sys, 'real_prefix') and not (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix):
-        print("Warning: 系统未检测到虚拟环境 (venv)，建议在虚拟环境中运行以确保 Scipy/Sklearn 依赖稳定。")
-    
-    bootstrap()
+        print("注意: 当前未检测到 venv 环境，请确保第三方科学计算库 (numpy/scipy/sklearn) 已安装。")
+
+    # 实例化控制器并执行
+    controller = IGBTAppController()
+    sys.exit(controller.run())
