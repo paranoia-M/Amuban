@@ -1,0 +1,1 @@
+pip install PyQt6 numpy scipy matplotlib scikit-learn pandas sqlalchemy watchdog
