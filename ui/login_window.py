@@ -40,7 +40,7 @@ class LeftVisualBoard(QWidget):
         p.drawLine(0, self.scan_pos, self.width(), self.scan_pos)
         p.setPen(Qt.GlobalColor.white)
         p.setFont(QFont("Impact", 35))
-        p.drawText(40, 120, "IGBT 智能自动化测试系统")
+        p.drawText(40, 120, "IGBT 智能测试")
 
 # =============================================================================
 # 2. 登录窗体 (修复版)
